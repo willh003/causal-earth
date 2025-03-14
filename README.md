@@ -2,7 +2,6 @@
 
 The repo is set up to contain the earthnet-models-pytorch submodule, which implements data loading from earthnet. You should install it as editable so you can make changes as needed to the dataloaders. 
 
-
 ```
 git clone --recurse-submodules git@github.com:willh003/CausalEarth.git
 
@@ -15,3 +14,14 @@ pip install earthnet segmentation-models-pytorch wandb draccus
 pip install -e ./earthnet-models-pytorch
 pip install -e .
 ```
+
+
+
+### Dev
+- Download scripts are in `causal-earth/download` 
+- Model interfaces are in `causal-earth/models` 
+- Train/eval scripts are in `causal-earth/scripts`
+- Utils are in `causal-earth/utils`
+- Torch Dataset implementations are in  `earthnet-models-pytorch/earthnet_models_pytorch/data`
+- Configs are defined as dataclasses, and loaded into scripts using draccus
+
