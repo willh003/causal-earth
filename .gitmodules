@@ -1,0 +1,3 @@
+[submodule "earthnet-models-pytorch"]
+	path = earthnet-models-pytorch
+	url = git@github.com:willh003/earthnet-models-pytorch.git
