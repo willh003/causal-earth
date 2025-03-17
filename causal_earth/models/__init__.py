@@ -1,0 +1,1 @@
+from .mae import mae_vit_base_patch16_dec512d8b, mae_vit_large_patch16_dec512d8b

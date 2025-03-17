@@ -14,7 +14,16 @@ pip install -e ./earthnet-models-pytorch
 pip install -e .
 ```
 
+### Training
+For now, we are using SatMAE pretrained checkpoints.
 
+train_mae.py uses the checkpoint fmow_pretrain.pth from 
+https://zenodo.org/records/7369797
+
+Download the checkpoint:
+```
+curl -L "https://zenodo.org/records/7369797/files/fmow_pretrain.pth?download=1" -o "causal_earth/ckpts/fmow_pretrain.pth" --progress-bar
+```
 
 ### Dev
 - Download scripts are in `causal-earth/download` 

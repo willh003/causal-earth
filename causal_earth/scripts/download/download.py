@@ -83,7 +83,8 @@ def load_minicube(dataset = "earthnet2021x", split = "train", id = "29SND_2018-0
         file = s3.glob(f"earthnet/{dataset}/{split}/**/{id}.nc")[0]
         print(f"Found {id}.")
     
-    mc = xr.open_dataset(s3.open(file))
+    s3_f = s3.open(file)
+    mc = xr.open_dataset(s3_f)
 
     return mc
 
@@ -130,15 +131,19 @@ def load_en21x_as_npz(minicube_path):
 
 
 if __name__ == "__main__":
-    dataset = "earthnet2023"
+    dataset = "greenearthnet"
     save_directory = "/home/wph52/greenearthnet"
     limit = 3
 
-    #download(dataset=dataset, save_directory=save_directory, limit=limit)
+
+    # mc = load_minicube()
+    # breakpoint()
+    # download(dataset=dataset, save_directory=save_directory, limit=limit)
+    # breakpoint()
     file = "/home/wph52/greenearthnet/earthnet2023/train/Algeria/29RNL6732.nc"
     mc = xr.open_dataset(file)
+    
     breakpoint()
-
 
 
  

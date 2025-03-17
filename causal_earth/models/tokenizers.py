@@ -1,5 +1,5 @@
 
-
+import torch.nn as nn
 
 class JointImageWeatherTokenizer(nn.Module):
     """
@@ -7,9 +7,10 @@ class JointImageWeatherTokenizer(nn.Module):
     """
 
     def __init__(self):
-        __super__().init()
+        
+        super().__init__()
 
-    def forward(image, weather):
+    def forward(self, image, weather):
         """
         x is a set of latent embeddings representing a (possibly multimodal) input
         """
