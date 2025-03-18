@@ -19,3 +19,4 @@ tqdm==4.66.1
 xarray==2022.12.0
 h5netcdf
 zarr
+mkl==2019.*
