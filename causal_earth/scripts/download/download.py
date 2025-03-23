@@ -1,4 +1,3 @@
-
 import numpy as np
 import s3fs
 import xarray as xr
@@ -8,6 +7,26 @@ from tqdm import tqdm
 SPLITS = {
     "earthnet2021x": ["train","iid","ood","extreme","seasonal"]
 }
+
+def download_region(dataset="earthnet2021x",split="train",region="29SND",save_directory="/media/sean/Samsung_T5", start=0):
+    """Downloads an entire region."""
+    s3 = s3fs.S3FileSystem(
+        anon=True, 
+        client_kwargs={
+            'endpoint_url': 'https://s3.bgc-jena.mpg.de:9000', 
+            'region_name': 'thuringia',
+        }
+    )
+
+    print(f"Finding files of {dataset}, split {split}, region {region} to download.")
+    region_files = s3.ls(f"earthnet/{dataset}/{split}/{region}")[start:]
+    
+    print(f"Found {len(region_files)} files.")
+    for file in tqdm(region_files):
+        savepath = Path(save_directory)/file[9:]
+        savepath.parent.mkdir(parents=True, exist_ok=True)
+        s3.download(file, str(savepath))
+            
 
 def download(dataset = "earthnet2021x", split = "train", save_directory = "data/", proxy = None, limit = None):
     """Download the recent EarthNet datasets
@@ -128,22 +147,19 @@ def load_en21x_as_npz(minicube_path):
 
     return npz_fake
 
-
-
 if __name__ == "__main__":
-    dataset = "greenearthnet"
-    save_directory = "/home/wph52/greenearthnet"
-    limit = 3
+
+    download_region(start=52)
+    # dataset = "greenearthnet"
+    # save_directory = "/home/wph52/greenearthnet"
+    # limit = 3
 
 
-    # mc = load_minicube()
-    # breakpoint()
-    # download(dataset=dataset, save_directory=save_directory, limit=limit)
-    # breakpoint()
-    file = "/home/wph52/greenearthnet/earthnet2023/train/Algeria/29RNL6732.nc"
-    mc = xr.open_dataset(file)
+    # # mc = load_minicube()
+    # # breakpoint()
+    # # download(dataset=dataset, save_directory=save_directory, limit=limit)
+    # # breakpoint()
+    # file = "/home/wph52/greenearthnet/earthnet2023/train/Algeria/29RNL6732.nc"
+    # mc = xr.open_dataset(file)
     
-    breakpoint()
-
-
- 
+    # breakpoint()
