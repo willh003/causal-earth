@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 
-zarr_path = "../data"
+zarr_path = "../../data"
 
 def is_valid_sample(sample):
     "Check if a sample is valid."
@@ -39,17 +39,20 @@ def get_random_valid_sample(africa_zarr, verbose=False):
         elif verbose:
             print("Invalid sample, resampling...")
         
-def display_raw_image(sample):
-    "Display a raw RGB image from the sample"
-    sample_scaled = sample
-    plt.figure(figsize=(10, 10))
-    plt.imshow(sample_scaled)
-    plt.title("Raw Sentinel-2 RGB Image (R=B04, G=B03, B=B02)")
-    plt.axis('off')
+def display_image_grid(samples, grid_size=(8, 8)):
+    """Display a grid of raw RGB images."""
+    fig, axes = plt.subplots(grid_size[0], grid_size[1], figsize=(12, 12))
+    fig.suptitle("Raw Sentinel-2 RGB Images (R=B04, G=B03, B=B02)", fontsize=16)
+    
+    for ax, sample in zip(axes.ravel(), samples):
+        ax.imshow(sample)
+        ax.axis('off')
+    
+    plt.tight_layout()
     plt.show()
 
-# Main execution
 if __name__ == "__main__":
     store = zarr.open(zarr_path) 
-    sample, indices = get_random_valid_sample(store, verbose=True)
-    display_raw_image(sample)
+    while True:
+        samples = [get_random_valid_sample(store, verbose=True)[0] for _ in range(8**2)]
+        display_image_grid(samples)

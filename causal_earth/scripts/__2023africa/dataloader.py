@@ -223,7 +223,7 @@ if __name__ == "__main__":
     from torchvision import transforms
     
     # Path to zarr store
-    zarr_path = "../data"
+    zarr_path = "../../data"
     
     # Example transformations (optional)
     transform = transforms.Compose([

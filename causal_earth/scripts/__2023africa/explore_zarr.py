@@ -144,7 +144,7 @@ def analyze_zarr_array(zarr_path):
 # Update main to use these new functions
 if __name__ == "__main__":
     # Set the path to your Zarr store
-    zarr_path = "../data"
+    zarr_path = "../../data"
     
     # Example 1: Analyze the Zarr array
     analysis_results = analyze_zarr_array(zarr_path)
