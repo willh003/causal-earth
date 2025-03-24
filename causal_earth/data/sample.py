@@ -44,7 +44,7 @@ def create_pooled_rgb_dataset(directory, batch_size=32, num_workers=8, shuffle=T
     )
     return dataloader
 
-def display_rgb_grid(batch, grid=(3,5)):
+def display_rgb_grid(batch, grid=(3,5), save_path=None):
     """
     Display a grid (rows, cols) of RGB images from a batch with shape (4, 3, 128, 128)
     """
@@ -61,14 +61,17 @@ def display_rgb_grid(batch, grid=(3,5)):
         axs[i].axis('off')
     
     plt.tight_layout()
-    plt.show()
+    if save_path is not None:
+        plt.savefig(save_path)
+    else:
+        plt.show()
 
 if __name__ == "__main__":
     rows, cols = 3,5
-    rgb_loader = create_pooled_rgb_dataset("/home/sean/data/earthnet2021x/train/29SND", batch_size=rows*cols)
+    rgb_loader = create_pooled_rgb_dataset("/home/wph52/greenearthnet/earthnet2021x/train/29SND", num_workers=4, batch_size=rows*cols)
 
     for i, batch in enumerate(rgb_loader):
-        display_rgb_grid(batch,(rows,cols))
+        display_rgb_grid(batch,(rows,cols), save_path=f"examples/sample_{i}")
         if i == 3:
             print("Ending sampler preview.")
             break
