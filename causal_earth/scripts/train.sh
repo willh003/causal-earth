@@ -20,7 +20,7 @@ WANDB_PROJECT="earthnet"
 ENABLE_WANDB=true
 
 # Optional: Set additional parameters
-MASK_RATIO=0.75
+MASK_RATIO=0.0
 NUM_WORKERS=8
 USE_AMP=false
 OPTIMIZER="adamw"

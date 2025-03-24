@@ -51,7 +51,7 @@ def main(cfg: MAEConfig):
     val_loader = DataLoader(
         val_set,
         batch_size=cfg.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=cfg.num_workers,
         pin_memory=torch.cuda.is_available()
     ) if val_set else None
@@ -409,23 +409,24 @@ def train_one_epoch(model, transform, data_loader, optimizer, device, epoch, sca
             masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
             masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
 
-            metrics = {
+            example_images = {
             # wandb uses PIL format (h, w, c) * 255
-            "train/full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
-            "train/masked_image": wandb.Image(masked_image * 255, caption="masked image"),
-            "train/masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
-            "train/full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
+            "full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
+            "masked_image": wandb.Image(masked_image * 255, caption="masked image"),
+            "masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
+            "full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
             }
 
-            log_metrics(metrics, epoch, prefix="train")
+            log_metrics(example_images, epoch, prefix="train")
 
         # Log metrics intermittently
         if batch_idx % cfg.log_interval == 0 and wandb.run:
-            wandb.log({
-                "train/batch_loss": loss_meter.avg,
-                "train/batch_time": batch_time.avg,
-                "train/data_time": data_time.avg
-            })
+            metrics = {
+                "batch_loss": loss_meter.avg,
+                "batch_time": batch_time.avg,
+                "data_time": data_time.avg
+            }
+            log_metrics(metrics, epoch, prefix="train")
     
     # Compute epoch metrics
     avg_loss = total_loss / len(data_loader)
@@ -488,10 +489,10 @@ def evaluate_model(model, transform, data_loader, device, epoch, cfg):
 
                 metrics = {
                     # wandb uses PIL format (h, w, c) * 255
-                    "val/full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
-                    "val/masked_image": wandb.Image(masked_image * 255, caption="masked image"),
-                    "val/masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
-                    "val/full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
+                    "full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
+                    "masked_image": wandb.Image(masked_image * 255, caption="masked image"),
+                    "masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
+                    "full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
                 }
                 log_metrics(metrics, epoch, prefix="val")
 
