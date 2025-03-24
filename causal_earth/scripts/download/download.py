@@ -148,8 +148,9 @@ def load_en21x_as_npz(minicube_path):
     return npz_fake
 
 if __name__ == "__main__":
+    save_directory = "/home/wph52/greenearthnet"
 
-    download_region(start=52)
+    download_region(start=52, save_directory=save_directory)
     # dataset = "greenearthnet"
     # save_directory = "/home/wph52/greenearthnet"
     # limit = 3
