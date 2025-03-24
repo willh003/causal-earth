@@ -3,6 +3,7 @@ import s3fs
 import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
+import argparse
 
 SPLITS = {
     "earthnet2021x": ["train","iid","ood","extreme","seasonal"]
@@ -148,9 +149,16 @@ def load_en21x_as_npz(minicube_path):
     return npz_fake
 
 if __name__ == "__main__":
-    save_directory = "/home/wph52/greenearthnet"
+    parser = argparse.ArgumentParser(description="Create validation split from training data")
+    parser.add_argument("--save_dir", type=str, default="/home/wph52/earthnet2021",
+                        help="Base directory containing the train folder")
+    parser.add_argument("--n_samples", type=int, default=10000,
+                        help="number of samples to download")
 
-    download_region(start=52, save_directory=save_directory, region="29SPC")
+    args = parser.parse_args()
+
+    download(save_directory=args.save_dir, limit=args.n_samples)
+    #download_region(start=52, save_directory=save_directory, region="29SPC")
     # dataset = "greenearthnet"
     # save_directory = "/home/wph52/greenearthnet"
     # limit = 3

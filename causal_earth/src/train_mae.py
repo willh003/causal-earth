@@ -3,6 +3,7 @@ import draccus
 import glob
 import wandb
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import os
@@ -16,7 +17,7 @@ from earthnet_models_pytorch.data.en21x_data import EarthNet2021XDataset
 
 from causal_earth.models import mae_vit_large_patch16_dec512d8b
 from causal_earth.cfgs import MAEConfig
-from causal_earth.utils import interpolate_pos_embed
+from causal_earth.utils import interpolate_pos_embed, visualize_masked_image
 from causal_earth.data import create_pooled_rgb_dataset
 
 @draccus.wrap()
@@ -38,7 +39,7 @@ def main(cfg: MAEConfig):
     
     # Prepare datasets and dataloaders
     train_set = EarthNet2021XDataset(cfg.train_dir, dl_cloudmask = True, allow_fastaccess = cfg.allow_fastaccess)
-    val_set = EarthNet2021XDataset(cfg.train_dir, dl_cloudmask = True, allow_fastaccess = cfg.allow_fastaccess) if cfg.val_dir else None
+    val_set = EarthNet2021XDataset(cfg.val_dir, dl_cloudmask = True, allow_fastaccess = cfg.allow_fastaccess) if cfg.val_dir else None
     
     train_loader = DataLoader(
         train_set,
@@ -72,6 +73,11 @@ def main(cfg: MAEConfig):
     # Set up checkpointing
     checkpoint_manager = CheckpointManager(cfg.ckpts_dir)
     
+    # First evaluation
+    if val_loader:
+        val_metrics = evaluate_model(model, transform, val_loader, device, epoch=0, cfg=cfg)
+        log_metrics(val_metrics, epoch=0, prefix="val")
+    
     # Training loop
     train_model(
         model=model,
@@ -85,16 +91,16 @@ def main(cfg: MAEConfig):
         checkpoint_manager=checkpoint_manager,
     )
     
-    # Final evaluation if validation set exists
+    # Final evaluation
     if val_loader:
-        evaluate_model(model, val_loader, device, epoch="final", cfg=cfg)
+        evaluate_model(model, transform, val_loader, device, epoch="final", cfg=cfg)
     
     # Save final model
     checkpoint_manager.save_checkpoint(model, optimizer, scheduler, cfg.epochs, is_final=True)
     
     # Close wandb
     if wandb.run:
-        wandb.finish()
+        wandb.fninish()
 
 
 def initialize_wandb(cfg):
@@ -105,7 +111,7 @@ def initialize_wandb(cfg):
         name=cfg.wandb_run_name,
         config=vars(cfg),
         dir=cfg.wandb_dir,
-        mode="disabled" if cfg.disable_wandb else "online"
+        mode="online" if cfg.enable_wandb else "disabled"
     )
 
 
@@ -281,7 +287,7 @@ def train_model(model, transform, train_loader, val_loader, optimizer, scheduler
     start_epoch = 0
     if cfg.resume:
         start_epoch = checkpoint_manager.load_latest_checkpoint(model, optimizer, scheduler)
-    
+
     # Training loop
     for epoch in range(start_epoch, cfg.epochs):
         print(f"Starting epoch {epoch+1}/{cfg.epochs}")
@@ -303,7 +309,7 @@ def train_model(model, transform, train_loader, val_loader, optimizer, scheduler
         
         # Validate if we have a validation set
         if val_loader:
-            val_metrics = evaluate_model(model, val_loader, device, epoch, cfg)
+            val_metrics = evaluate_model(model, transform, val_loader, device, epoch, cfg)
             log_metrics(val_metrics, epoch, prefix="val")
         
         # Update learning rate
@@ -348,7 +354,7 @@ def train_one_epoch(model, transform, data_loader, optimizer, device, epoch, sca
         
         # Forward pass with mixed precision if enabled
         with torch.cuda.amp.autocast(enabled=cfg.use_amp):
-            loss, _, _ = model(images, mask_ratio=cfg.mask_ratio)
+            loss, pred_images, mask = model(images, mask_ratio=cfg.mask_ratio)
         
         # Normalize loss by accumulation steps
         loss = loss / cfg.gradient_accumulation_steps
@@ -391,6 +397,28 @@ def train_one_epoch(model, transform, data_loader, optimizer, device, epoch, sca
         # Update progress bar
         progress.set_postfix(loss=loss_meter.avg)
         
+        if batch_idx == 0:
+            patch_size = int(224/14) # TODO: hard coded patch size
+            unpatched_preds = model.unpatchify(pred_images, p=patch_size, c=images.shape[1]) 
+
+            vis_image = images[0]
+            vis_pred = unpatched_preds[0]
+            pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1]) # expand from 14x14 patches to 224*224 pixels
+            vis_mask = model.unpatchify(pixel_mask.int(),p=patch_size, c=1)[0] # get mask for entire image
+
+            masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
+            masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
+
+            metrics = {
+            # wandb uses PIL format (h, w, c) * 255
+            "train/full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
+            "train/masked_image": wandb.Image(masked_image * 255, caption="masked image"),
+            "train/masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
+            "train/full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
+            }
+
+            log_metrics(metrics, epoch, prefix="train")
+
         # Log metrics intermittently
         if batch_idx % cfg.log_interval == 0 and wandb.run:
             wandb.log({
@@ -409,7 +437,7 @@ def train_one_epoch(model, transform, data_loader, optimizer, device, epoch, sca
     }
 
 
-def evaluate_model(model, data_loader, device, epoch, cfg):
+def evaluate_model(model, transform, data_loader, device, epoch, cfg):
     """Evaluate the model on the validation set."""
     model.eval()
     total_loss = 0
@@ -427,12 +455,12 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
 
             dynamic_bgr = data["dynamic"][0][:, 0, 1:4, ...] # [0] grabs the rgb and not cloud, 1:4 grabs bgr bands, : grabs batch
             dynamic_rgb = dynamic_bgr.flip(1) # flip along channel to get rgb
-            images = normalize(dynamic_rgb) # normalize the rgb image
+            images = transform(dynamic_rgb) # normalize the rgb image
 
             images = images.to(device, non_blocking=True)
             
             # Forward pass
-            loss, _, _ = model(images, mask_ratio=0.75)  # Fixed mask ratio for validation
+            loss, pred_images, mask = model(images, mask_ratio=cfg.mask_ratio)  # Fixed mask ratio for validation
             
             # Update metrics
             total_loss += loss.item()
@@ -445,21 +473,38 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
             # Save log to file
             with open(log_file, 'a') as f:
                 f.write(f"Batch {batch_idx}/{len(data_loader)}, Loss: {current_loss:.4f}\n")
-    
+            
+            if batch_idx == 0:
+                patch_size = int(224/14) # TODO: hard coded patch size
+                unpatched_preds = model.unpatchify(pred_images, p=patch_size, c=images.shape[1]) 
+
+                vis_image = images[0]
+                vis_pred = unpatched_preds[0]
+                pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1]) # expand from 14x14 patches to 224*224 pixels
+                vis_mask = model.unpatchify(pixel_mask.int(),p=patch_size, c=1)[0] # get mask for entire image
+
+                masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
+                masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
+
+                metrics = {
+                    # wandb uses PIL format (h, w, c) * 255
+                    "val/full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
+                    "val/masked_image": wandb.Image(masked_image * 255, caption="masked image"),
+                    "val/masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
+                    "val/full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
+                }
+                log_metrics(metrics, epoch, prefix="val")
+
     # Compute average metrics
     avg_loss = total_loss / len(data_loader)
     
     return {
-        "loss": avg_loss
+        "loss": avg_loss,
     }
 
 
 def log_metrics(metrics, epoch, prefix="train"):
     """Log metrics to wandb and console."""
-    # Print to console
-    metrics_str = ", ".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
-    print(f"{prefix.capitalize()} metrics - Epoch {epoch+1}: {metrics_str}")
-    
     # Log to wandb
     if wandb.run:
         wandb_metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
