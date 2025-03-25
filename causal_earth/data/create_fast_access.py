@@ -37,11 +37,11 @@ class Batch():
         np.savez(fastfilepath, sen2arr = batch["dynamic"][0].numpy(), eobsarr = batch["dynamic"][1].numpy(), sen2mask = batch["dynamic_mask"][0].numpy(), staticarr = batch["static"][0].numpy(), lc = batch["landcover"].numpy())
 
 
-def generate_data(data_path = "/scratch/earthnet2021x/train/", out_path = "/scratch/earthnet2021x/train_fastaccess/", dataset = "train"):
+def generate_data(data_path = "/scratch/earthnet2021x/train/", dataset = "train"):
 
     print("Generating Fast Access Data")
 
-    B = Batch(data_path=data_path, out_path=out_path, dataset = dataset)
+    B = Batch(data_path=data_path, out_path=data_path, dataset = dataset)
     
     
     results_processes = process_map(B.save_one_batch, range(len(B.dataset)),chunksize = 20)
@@ -52,10 +52,9 @@ if __name__ == "__main__":
 
     parser = ArgumentParser(description='Process some integers.')
     parser.add_argument('data_path', type = str)
-    parser.add_argument('out_path', type = str)
     parser.add_argument('dataset', type = str)
 
     args = parser.parse_args()
 
-    generate_data(data_path = args.data_path, out_path=args.out_path, dataset=args.dataset)
+    generate_data(data_path = args.data_path, dataset=args.dataset)
 

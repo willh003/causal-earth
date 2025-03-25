@@ -7,8 +7,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
 
 # Configuration
-TRAIN_DIR="/home/wph52/greenearthnet/earthnet2021x/train/29SND"
-VAL_DIR=null
+# TRAIN_DIR="/home/wph52/greenearthnet/earthnet2021x/train/29SND"
+TRAIN_DIR="/home/wph52/earthnet2021/earthnet2021x/train/"
+VAL_DIR="/home/wph52/earthnet2021/earthnet2021x/val/"
 FAST_ACCESS=true
 CHECKPOINT_PATH="/home/wph52/causal-earth/causal_earth/ckpts/fmow_pretrain.pth"
 BATCH_SIZE=16
@@ -16,10 +17,10 @@ EPOCHS=100
 LEARNING_RATE=3e-4
 OUTPUT_DIR="$PROJECT_ROOT/train_logs"
 WANDB_PROJECT="earthnet"
-DISABLE_WANDB=false
+ENABLE_WANDB=true
 
 # Optional: Set additional parameters
-MASK_RATIO=0.75
+MASK_RATIO=0.0
 NUM_WORKERS=8
 USE_AMP=false
 OPTIMIZER="adamw"
@@ -60,7 +61,7 @@ python "$PROJECT_ROOT/src/train_mae.py" \
   --learning_rate "$LEARNING_RATE" \
   --output_dir "$OUTPUT_DIR" \
   --wandb_project "$WANDB_PROJECT" \
-  --disable_wandb "$DISABLE_WANDB" \
+  --enable_wandb "$ENABLE_WANDB" \
   --mask_ratio "$MASK_RATIO" \
   --num_workers "$NUM_WORKERS" \
   --use_amp "$USE_AMP" \
@@ -69,5 +70,3 @@ python "$PROJECT_ROOT/src/train_mae.py" \
   --log_interval "$LOG_INTERVAL" \
   --checkpoint_interval "$CHECKPOINT_INTERVAL" \
   --gpu_id "$GPU_ID"
-
-echo "Training completed successfully!"

@@ -146,9 +146,9 @@ class MAEConfig:
         default=None,
         metadata={"help": "W&B run name (defaults to a generated name)"}
     )
-    disable_wandb: bool = field(
-        default=False,
-        metadata={"help": "Disable Weights & Biases logging"}
+    enable_wandb: bool = field(
+        default=True,
+        metadata={"help": "Enable/disable Weights & Biases logging"}
     )
     
     def __post_init__(self):
