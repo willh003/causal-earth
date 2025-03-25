@@ -94,7 +94,6 @@ def main(rgbloader: DataLoader):
     label2.pack(pady=20)
 
     root.mainloop()
-    # hello world
 
 
 if __name__ == "__main__":
