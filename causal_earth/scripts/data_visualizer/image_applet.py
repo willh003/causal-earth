@@ -7,10 +7,11 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image, ImageTk
 import io
+import streamlit as st
 
 
-global current_index
-current_index = 0
+if "current_index" not in st.session_state:
+    st.session_state.current_index = 0
 
 
 def generate_image(batch, grid=(1, 1)):
@@ -36,64 +37,49 @@ def generate_image(batch, grid=(1, 1)):
     return fig
 
 
-def main(rgbloader: DataLoader):
+def streamlit_app(rgbloader: DataLoader):
     def current_image():
-        global current_index
-        fig = generate_image(rgbloader.dataset[current_index], grid=(1, 1))
+        fig = generate_image(
+            rgbloader.dataset[st.session_state.current_index], grid=(1, 1)
+        )
         img_buf = io.BytesIO()
         fig.savefig(img_buf, format="png")
         plt.close(fig)
-        img = Image.open(img_buf)
-        return ImageTk.PhotoImage(image=img)
+        img_buf.seek(0)
+        return img_buf
+
+    st.title("Causal Earth Data Applet")
+
+    previous_image_button_col, curr_image_col, next_image_button_col = st.columns(
+        [1, 2, 1]
+    )
 
     def on_next_image():
-        global current_index
-        current_index += 1
-        if current_index >= len(rgbloader):
-            current_index = 0
-        label2.config(text="Current Image: " + str(current_index))
-        image = current_image()
-        image_panel.config(image=image)
-        image_panel.image = image
+        st.session_state.current_index += 1
+        if st.session_state.current_index >= len(rgbloader):
+            st.session_state.current_index = 0
 
     def on_prev_image():
-        global current_index
-        current_index -= 1
-        if current_index < 0:
-            current_index = len(rgbloader) - 1
-        label2.config(text="Current Image: " + str(current_index))
-        image = current_image()
-        image_panel.config(image=image)
-        image_panel.image = image
+        st.session_state.current_index -= 1
+        if st.session_state.current_index < 0:
+            st.session_state.current_index = len(rgbloader) - 1
 
-    root = tk.Tk()
-    root.title("Casaul Earth Data Applet")
-    next_image_button = tk.Button(
-        text="next image", command=on_next_image, fg="darkgreen", bg="white"
-    )
-    next_image_button.pack()
+    with next_image_button_col:
+        st.button("Next Image", on_click=on_next_image, key="next_image")
+    with previous_image_button_col:
+        st.button("Previous Image", on_click=on_prev_image, key="prev_image")
 
-    prev_image_button = tk.Button(
-        text="previous image", command=on_prev_image, fg="darkgreen", bg="white"
-    )
-    prev_image_button.pack()
+    with curr_image_col:
+        st.image(
+            current_image(),
+            caption=f"Current Image: {st.session_state.current_index}",
+            use_container_width=True,
+            channels="RGB",
+            output_format="auto",
+        )
 
-    image = current_image()
-    image_panel = tk.Label(root, image=image)
-    image_panel.image = image
-    image_panel.pack()
-
-    # image = FigureCanvasTkAgg(update_image(), master=root)
-    # image.draw(),
-    # image.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-
-    label1 = tk.Label(root, text=str(len(rgbloader)) + " images")
-    label1.pack(pady=20)
-
-    label2 = tk.Label(root, text="Current Image: " + str(current_index))
-    label2.pack(pady=20)
-
-    root.mainloop()
+    st.write(f"Total Images: {len(rgbloader)}")
+    print(st.session_state.current_index)
 
 
 if __name__ == "__main__":
@@ -102,12 +88,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print(args.data_path)
+    # print(args.data_path)
     rgbloader = create_pooled_rgb_dataset(
         directory=args.data_path,
         batch_size=1,
         num_workers=1,  # please change I have a shitty computer that crashes if more than 4
         shuffle=True,
     )
-    print(len(rgbloader))
-    main(rgbloader)
+    # print(len(rgbloader))
+    streamlit_app(rgbloader)
