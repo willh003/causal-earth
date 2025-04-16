@@ -1,13 +1,14 @@
-import tkinter as tk
 from causal_earth.data.sample import create_pooled_rgb_dataset
 from argparse import ArgumentParser
+import numpy as np
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from PIL import Image, ImageTk
 import io
 import streamlit as st
+from earthnet_models_pytorch.data.en21x_data import EarthNet2021XDataset
+from causal_earth.cfgs import MAEConfig
+import draccus
+import torch
 
 
 if "current_index" not in st.session_state:
@@ -21,7 +22,6 @@ def generate_image(batch, grid=(1, 1)):
     rows, cols = grid
     fig, axs = plt.subplots(rows, cols, figsize=(2 * cols, 2 * rows), squeeze=False)
     axs = axs.flatten()
-    print(batch.shape)
     if grid[0] == 1 and grid[1] == 1:
         batch = batch.unsqueeze(0)
     imgs = batch.permute(0, 2, 3, 1).cpu().numpy()
@@ -39,9 +39,18 @@ def generate_image(batch, grid=(1, 1)):
 
 def streamlit_app(rgbloader: DataLoader):
     def current_image():
-        fig = generate_image(
-            rgbloader.dataset[st.session_state.current_index], grid=(1, 1)
-        )
+        """Returns the current image as a BytesIO object for Streamlit."""
+        # Get the current image from the DataLoader
+        curr_data_sen2 = rgbloader.dataset[st.session_state.current_index]["dynamic"][
+            0
+        ]  # only get first image for now
+        # Convert the image to a grid format
+        print(curr_data_sen2.shape)  # curr_data["dynamic"][0] is "sen2arr"
+        red = curr_data_sen2[0, 3, :, :].numpy()
+        green = curr_data_sen2[0, 2, :, :].numpy()
+        blue = curr_data_sen2[0, 1, :, :].numpy()
+        rgb = torch.from_numpy(np.stack([red, green, blue], axis=0))
+        fig = generate_image(rgb, grid=(1, 1))
         img_buf = io.BytesIO()
         fig.savefig(img_buf, format="png")
         plt.close(fig)
@@ -82,18 +91,55 @@ def streamlit_app(rgbloader: DataLoader):
     print(st.session_state.current_index)
 
 
-if __name__ == "__main__":
-    parser = ArgumentParser(description="Process some integers.")
-    parser.add_argument("-data_path", type=str)
+@draccus.wrap()
+def main(cfg: MAEConfig):
+    # parser = ArgumentParser(description="Process some integers.")
+    # parser.add_argument("-data_path", type=str)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
     # print(args.data_path)
-    rgbloader = create_pooled_rgb_dataset(
-        directory=args.data_path,
-        batch_size=1,
-        num_workers=1,  # please change I have a shitty computer that crashes if more than 4
+    # rgbloader = create_pooled_rgb_dataset(
+    #     directory=args.data_path,
+    #     batch_size=1,
+    #     num_workers=1,  # please change I have a shitty computer that crashes if more than 4
+    #     shuffle=True,
+
+    cfg.train_dir = "../greenearthnet/earthnet2021x/train/29SPC"  # hardcoded for now
+    print(cfg.train_dir)
+    train_set = EarthNet2021XDataset(
+        cfg.train_dir, dl_cloudmask=True, allow_fastaccess=cfg.allow_fastaccess
+    )
+    val_set = (
+        EarthNet2021XDataset(
+            cfg.val_dir, dl_cloudmask=True, allow_fastaccess=cfg.allow_fastaccess
+        )
+        if cfg.val_dir
+        else None
+    )
+
+    print(f"Train set size: {len(train_set)}")
+    train_loader = DataLoader(
+        train_set,
+        batch_size=cfg.batch_size,
         shuffle=True,
+        num_workers=1,  # please change I have a shitty computer that crashes if more than 4
+        pin_memory=torch.cuda.is_available(),
+    )
+    val_loader = (
+        DataLoader(
+            val_set,
+            batch_size=cfg.batch_size,
+            shuffle=False,
+            num_workers=cfg.num_workers,
+            pin_memory=torch.cuda.is_available(),
+        )
+        if val_set
+        else None
     )
     # print(len(rgbloader))
-    streamlit_app(rgbloader)
+    streamlit_app(train_loader)
+
+
+if __name__ == "__main__":
+    main()
