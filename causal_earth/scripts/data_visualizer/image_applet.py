@@ -1,7 +1,7 @@
 from causal_earth.data.sample import create_pooled_rgb_dataset
 from argparse import ArgumentParser
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 import matplotlib.pyplot as plt
 import io
 import streamlit as st
@@ -9,10 +9,7 @@ from earthnet_models_pytorch.data.en21x_data import EarthNet2021XDataset
 from causal_earth.cfgs import MAEConfig
 import draccus
 import torch
-
-
-if "current_index" not in st.session_state:
-    st.session_state.current_index = 0
+import time
 
 
 def generate_image(batch, grid=(1, 1)):
@@ -37,15 +34,41 @@ def generate_image(batch, grid=(1, 1)):
     return fig
 
 
-def streamlit_app(rgbloader: DataLoader):
+def streamlit_app(train_set: Dataset):
+
+    # Initialize Streamlit session state with default values if not already set.
+    st.session_state.setdefault("current_index", 0)
+    st.session_state.setdefault("filters", {"include_clouds": False})
+    st.session_state.setdefault(
+        "train_loader",
+        DataLoader(
+            train_set,
+            batch_size=1,  # for now set to 1 so that all images are loaded
+            shuffle=True,
+            num_workers=1,  # please change I have a shitty computer that crashes if more than 4
+            pin_memory=torch.cuda.is_available(),
+        ),
+    )
+
     def current_image():
         """Returns the current image as a BytesIO object for Streamlit."""
         # Get the current image from the DataLoader
-        curr_data_sen2 = rgbloader.dataset[st.session_state.current_index]["dynamic"][
+        curr_data_sen2 = st.session_state.train_loader.dataset[
+            st.session_state.current_index
+        ]["dynamic"][
             0
         ]  # only get first image for now
+
+        if not st.session_state.filters["include_clouds"]:
+            # Remove clouds from the image if the filter is set
+            cloud_mask = (
+                st.session_state.train_loader.dataset[st.session_state.current_index][
+                    "dynamic_mask"
+                ][0]
+                < 1.0
+            )
+            curr_data_sen2 = curr_data_sen2 * cloud_mask
         # Convert the image to a grid format
-        print(curr_data_sen2.shape)  # curr_data["dynamic"][0] is "sen2arr"
         red = curr_data_sen2[0, 3, :, :].numpy()
         green = curr_data_sen2[0, 2, :, :].numpy()
         blue = curr_data_sen2[0, 1, :, :].numpy()
@@ -65,13 +88,28 @@ def streamlit_app(rgbloader: DataLoader):
 
     def on_next_image():
         st.session_state.current_index += 1
-        if st.session_state.current_index >= len(rgbloader):
+        if st.session_state.current_index >= len(st.session_state.train_loader):
             st.session_state.current_index = 0
 
     def on_prev_image():
         st.session_state.current_index -= 1
         if st.session_state.current_index < 0:
-            st.session_state.current_index = len(rgbloader) - 1
+            st.session_state.current_index = len(st.session_state.train_loader) - 1
+
+    st.sidebar.title("Filters")
+
+    def toggle_include_clouds():
+        st.session_state.filters["include_clouds"] = not st.session_state.filters[
+            "include_clouds"
+        ]
+        # Update the DataLoader based on the filter
+
+    st.sidebar.checkbox(
+        "Include Clouds",
+        value=st.session_state.filters["include_clouds"],
+        on_change=toggle_include_clouds,
+        key="include_clouds_checkbox",
+    )
 
     with next_image_button_col:
         st.button("Next Image", on_click=on_next_image, key="next_image")
@@ -87,24 +125,12 @@ def streamlit_app(rgbloader: DataLoader):
             output_format="auto",
         )
 
-    st.write(f"Total Images: {len(rgbloader)}")
+    st.write(f"Total Images: {len(st.session_state.train_loader)}")
     print(st.session_state.current_index)
 
 
 @draccus.wrap()
 def main(cfg: MAEConfig):
-    # parser = ArgumentParser(description="Process some integers.")
-    # parser.add_argument("-data_path", type=str)
-
-    # args = parser.parse_args()
-
-    # print(args.data_path)
-    # rgbloader = create_pooled_rgb_dataset(
-    #     directory=args.data_path,
-    #     batch_size=1,
-    #     num_workers=1,  # please change I have a shitty computer that crashes if more than 4
-    #     shuffle=True,
-
     cfg.train_dir = "../greenearthnet/earthnet2021x/train/29SPC"  # hardcoded for now
     print(cfg.train_dir)
     train_set = EarthNet2021XDataset(
@@ -119,9 +145,10 @@ def main(cfg: MAEConfig):
     )
 
     print(f"Train set size: {len(train_set)}")
+    time1 = time.time()
     train_loader = DataLoader(
         train_set,
-        batch_size=cfg.batch_size,
+        batch_size=1,  # for now set to 1 so that all images are loaded
         shuffle=True,
         num_workers=1,  # please change I have a shitty computer that crashes if more than 4
         pin_memory=torch.cuda.is_available(),
@@ -137,8 +164,9 @@ def main(cfg: MAEConfig):
         if val_set
         else None
     )
+    print(f"Train loader size: {len(train_loader)}")
     # print(len(rgbloader))
-    streamlit_app(train_loader)
+    streamlit_app(train_set)
 
 
 if __name__ == "__main__":
