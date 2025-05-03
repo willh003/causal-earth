@@ -18,6 +18,7 @@ LEARNING_RATE=3e-4
 OUTPUT_DIR="$PROJECT_ROOT/train_logs"
 WANDB_PROJECT="earthnet"
 ENABLE_WANDB=true
+MASK_LOSS=false
 
 # Optional: Set additional parameters
 MASK_RATIO=0.0
@@ -69,4 +70,5 @@ python "$PROJECT_ROOT/src/train_mae.py" \
   --scheduler "$SCHEDULER" \
   --log_interval "$LOG_INTERVAL" \
   --checkpoint_interval "$CHECKPOINT_INTERVAL" \
-  --gpu_id "$GPU_ID"
+  --gpu_id "$GPU_ID" \
+  --mask_loss "$MASK_LOSS"

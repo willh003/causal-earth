@@ -19,6 +19,11 @@ class MAEConfig:
         default="data/imagenet/train",
         metadata={"help": "Path to training dataset directory"}
     )
+    mask_loss: bool = field(
+        default=True,
+        metadata={"help": "True to compute loss only on masked patches, false to compute on all patches"}
+    )
+
     val_dir: Optional[str] = field(
         default="data/imagenet/val",
         metadata={"help": "Path to validation dataset directory (optional)"}
@@ -129,7 +134,7 @@ class MAEConfig:
         metadata={"help": "Log training metrics every N steps"}
     )
     checkpoint_interval: int = field(
-        default=10,
+        default=1000,
         metadata={"help": "Save checkpoint every N epochs"}
     )
     resume: bool = field(
@@ -145,6 +150,10 @@ class MAEConfig:
     wandb_run_name: Optional[str] = field(
         default=None,
         metadata={"help": "W&B run name (defaults to a generated name)"}
+    )
+    wandb_tags: List[str] = field(
+        default=None,
+        metadata={"help": "WB tags"}
     )
     enable_wandb: bool = field(
         default=True,
@@ -177,6 +186,11 @@ class MAEConfig:
         if not self.wandb_run_name:
             self.wandb_run_name = f"mae_{timestamp}_{random_id}"
         
+
+        if self.wandb_tags is None:
+            self.wandb_tags = []
+        self.wandb_tags = self.wandb_tags + [["all_loss", "mask_loss"][self.mask_loss], ["scratch", "pretrained"][bool(self.ckpt_path)], f"r_{self.mask_ratio}"]
+
         # Validate parameters
         assert 0.0 <= self.mask_ratio <= 1.0, "Mask ratio must be between 0 and 1"
         assert self.optimizer in ["adamw", "sgd"], "Optimizer must be one of [adamw, sgd]"

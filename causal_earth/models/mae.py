@@ -1,9 +1,5 @@
 # --------------------------------------------------------
-# References:
-# MAE: https://github.com/facebookresearch/mae
-# timm: https://github.com/rwightman/pytorch-image-models/tree/master/timm
-# DeiT: https://github.com/facebookresearch/deit
-# SatMAE: https://github.com/sustainlab-group/SatMAE
+# From SatMAE: https://github.com/sustainlab-group/SatMAE/blob/main/models_mae.py
 # --------------------------------------------------------
 
 from functools import partial
@@ -22,7 +18,7 @@ class MAE(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False):
+                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False, mask_loss=True):
         super().__init__()
 
         self.in_c = in_chans
@@ -58,7 +54,8 @@ class MAE(nn.Module):
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
-
+        self.mask_loss = mask_loss
+        
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -155,7 +152,7 @@ class MAE(nn.Module):
     def forward_encoder(self, x, mask_ratio):
         # embed patches
         x = self.patch_embed(x)
-
+        
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]
 
@@ -194,7 +191,7 @@ class MAE(nn.Module):
 
         # predictor projection
         x = self.decoder_pred(x)
-
+        
         # remove cls token
         x = x[:, 1:, :]
 
@@ -218,8 +215,12 @@ class MAE(nn.Module):
 
         loss = (pred - target) ** 2
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+        
+        if self.mask_loss:
+            loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+        else:
+            loss = loss.mean()
 
-        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
     def forward(self, imgs, mask_ratio=0.75):

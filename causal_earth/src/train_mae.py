@@ -56,6 +56,7 @@ def main(cfg: MAEConfig):
         pin_memory=torch.cuda.is_available()
     ) if val_set else None
 
+
     # Create a comprehensive transform pipeline
     transform = transforms.Compose([
         # Resize the image to 224x224 pixels
@@ -96,21 +97,23 @@ def main(cfg: MAEConfig):
         evaluate_model(model, transform, val_loader, device, epoch="final", cfg=cfg)
     
     # Save final model
-    checkpoint_manager.save_checkpoint(model, optimizer, scheduler, cfg.epochs, is_final=True)
+    checkpoint_manager.save_checkpoint(model, optimizer, scheduler, cfg.epochs)
     
     # Close wandb
     if wandb.run:
-        wandb.fninish()
+        wandb.finish()
 
 
 def initialize_wandb(cfg):
     """Initialize Weights & Biases logging."""
+
     wandb.init(
-        project="temporal-earth-prac",
-        entity="willhu003",
+        project="earth",
+        entity="pcgc",
         name=cfg.wandb_run_name,
         config=vars(cfg),
         dir=cfg.wandb_dir,
+        tags=cfg.wandb_tags,
         mode="online" if cfg.enable_wandb else "disabled"
     )
 
@@ -133,7 +136,7 @@ def setup_device(cfg):
 def build_model(cfg):
     """Build and initialize the model with pretrained weights if available."""
     # Initialize model
-    model = mae_vit_large_patch16_dec512d8b()
+    model = mae_vit_large_patch16_dec512d8b(mask_loss=cfg.mask_loss)
     
     # Load pre-trained weights if provided
     if cfg.ckpt_path:
@@ -221,7 +224,7 @@ class CheckpointManager:
         self.ckpts_dir = ckpts_dir
         os.makedirs(ckpts_dir, exist_ok=True)
     
-    def save_checkpoint(self, model, optimizer, scheduler, epoch, is_final=False):
+    def save_checkpoint(self, model, optimizer, scheduler, epoch):
         """Save model checkpoint."""
         checkpoint = {
             'model': model.state_dict(),
@@ -232,16 +235,13 @@ class CheckpointManager:
         if scheduler:
             checkpoint['scheduler'] = scheduler.state_dict()
         
-        filename = "final_checkpoint.pth" if is_final else f"checkpoint_epoch_{epoch}.pth"
+        filename = "checkpoint.pth"
         checkpoint_path = os.path.join(self.ckpts_dir, filename)
         
         torch.save(checkpoint, checkpoint_path)
         print(f"Checkpoint saved to {checkpoint_path}")
         
-        # Log to wandb
-        if wandb.run:
-            wandb.save(checkpoint_path)
-    
+
     def load_latest_checkpoint(self, model, optimizer, scheduler=None):
         """Load the latest checkpoint if available."""
         checkpoints = glob.glob(os.path.join(self.ckpts_dir, "checkpoint_epoch_*.pth"))
@@ -341,11 +341,12 @@ def train_one_epoch(model, transform, data_loader, optimizer, device, epoch, sca
     end = time.time()
     
     for batch_idx, data in progress:
+
         # Measure data loading time
         data_time.update(time.time() - end)
 
         # TODO: factor this out into dataset
-        dynamic_bgr = data["dynamic"][0][:, 0, 1:4, ...] # [0] grabs the rgb and not cloud, 1:4 grabs bgr bands, : grabs batch
+        dynamic_bgr = data["dynamic"][0][:, 0, 1:4, ...] # [0] grabs the rgb and not cloud, : grabs batch, 0 grabs the first obs in sequence, 1:4 grabs bgr bands, 
         dynamic_rgb = dynamic_bgr.flip(1) # flip along channel to get rgb
         images = transform(dynamic_rgb) # normalize the rgb image
 
@@ -479,10 +480,11 @@ def evaluate_model(model, transform, data_loader, device, epoch, cfg):
                 patch_size = int(224/14) # TODO: hard coded patch size
                 unpatched_preds = model.unpatchify(pred_images, p=patch_size, c=images.shape[1]) 
 
-                vis_image = images[0]
-                vis_pred = unpatched_preds[0]
+                VIS_IDX = 3
+                vis_image = images[VIS_IDX]
+                vis_pred = unpatched_preds[VIS_IDX]
                 pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1]) # expand from 14x14 patches to 224*224 pixels
-                vis_mask = model.unpatchify(pixel_mask.int(),p=patch_size, c=1)[0] # get mask for entire image
+                vis_mask = model.unpatchify(pixel_mask.int(),p=patch_size, c=1)[VIS_IDX] # get mask for entire image
 
                 masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
                 masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16) # patch size 16 for pretrained MAEs
