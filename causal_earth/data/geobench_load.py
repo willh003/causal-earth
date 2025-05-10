@@ -5,9 +5,7 @@
 import geobench
 import os 
 
-os.environ.get("GEO_BENCH_DIR", None) 
 
-print("geobench dir:", geobench.GEO_BENCH_DIR)
 
 for benchmark_name in ("classification_v1.0", "segmentation_v1.0"):
     print(f"Benchmark {benchmark_name}:\n")
@@ -15,6 +13,7 @@ for benchmark_name in ("classification_v1.0", "segmentation_v1.0"):
         print(f"Task {task.dataset_name}:\n  {task}\n")
         
         dataset = task.get_dataset(split="train")
+        breakpoint()
         sample = dataset[0]
 
         print(f"Sample 0 named: {sample.sample_name}")

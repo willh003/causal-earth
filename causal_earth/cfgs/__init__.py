@@ -1,1 +1,1 @@
-from .train import MAEConfig
+from .train import MAEConfig, EvalConfig

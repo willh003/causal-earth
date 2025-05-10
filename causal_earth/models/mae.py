@@ -253,20 +253,3 @@ def mae_vit_huge_patch14_dec512d8b(**kwargs):
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
 
-
-
-class TemporalMAE(nn.Module):
-    """
-    A masked autoencoder that reconstructs an image in the future
-    (may be able to use standard MAE with a different loss)
-    https://arxiv.org/abs/2111.06377
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        """
-        x is a set of latent embeddings representing a (possibly multimodal) input
-        """
-        pass

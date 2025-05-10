@@ -2,7 +2,7 @@
 
 import os
 
-os.environ["GEO_BENCH_DIR"] = "/home/wph52/geobench"
+#os.environ["GEO_BENCH_DIR"] = "/home/wph52/dataset/geobench"
 
 from pathlib import Path
 from huggingface_hub import HfApi, hf_hub_download
