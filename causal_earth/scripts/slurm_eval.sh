@@ -35,16 +35,17 @@ TIME="30:00:00"
 
 # Define multiple tasks to run
 declare -a TASKS=(
-#   "m-brick-kiln"
-#   "m-eurosat"
-#    "m-cashew-plant"
-  "m-SA-crop-type"
+   #"m-brick-kiln"
+   "m-eurosat"
+   #"m-cashew-plant"
+   #"m-SA-crop-type"
   # Add more tasks here as needed
 )
 
 declare -a PRETRAINED_MAE_PATH=(
-  #"/home/wph52/causal-earth/causal_earth/train_logs/mae_fmow_pretrain_mask0.75/20250503_173757_bs16_lr0.0003_wd0.05_mr0.75_pqjci/ckpts/checkpoint.pth"
-  ""  # Empty string represents None
+  #"/home/wph52/causal-earth/causal_earth/train_logs/mae_fmow_pretrain_mask0.75/20250503_173757_bs16_lr0.0003_wd0.05_mr0.75_pqjci/ckpts/checkpoint.pth" # pretrain
+  "/home/wph52/causal-earth/causal_earth/train_logs/mae_scratch_mask0.75/20250413_154046_bs16_lr0.0003_wd0.05_mr0.75_m5osr/ckpts/final_checkpoint.pth" # scratch
+  #""  # Empty string represents None
   # Add more paths here as needed
 )
 

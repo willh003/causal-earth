@@ -2,6 +2,7 @@ import draccus
 import wandb
 import torch
 import numpy as np
+import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import os
@@ -24,8 +25,21 @@ def main(training_run_dir: str):
     """
 
     # Load config
+    cfg_path = os.path.join(training_run_dir, "cfg", "config.yaml")
+    if not os.path.exists(cfg_path):
+        raise FileNotFoundError(f"Config file not found at {cfg_path}")
+
     with open(os.path.join(training_run_dir, "cfg", "config.yaml"), "r") as f:
-        cfg = yaml.load(f)
+        cfg_dict = yaml.safe_load(f)
+    
+    # Get valid fields from EvalConfig
+    valid_fields = set(EvalConfig.__annotations__.keys())
+    
+    # Filter out unexpected fields
+    cfg_dict = {k: v for k, v in cfg_dict.items() if k in valid_fields}
+    
+    # Convert dict to EvalConfig object
+    cfg = EvalConfig(**cfg_dict)
 
     # Initialize wandb
     initialize_wandb(cfg)
@@ -35,7 +49,7 @@ def main(training_run_dir: str):
     
     # Build model
     model = build_model(cfg)
-    
+
     # Load checkpoint
     load_checkpoint(model, cfg.checkpoint_path)
     
@@ -229,4 +243,5 @@ class AverageMeter:
         return fmtstr.format(**self.__dict__)
 
 if __name__ == "__main__":
-    main() 
+    training_run_dir = "/home/wph52/causal-earth/causal_earth/train_logs/20250510_195846_bs16_lr0.0003_wd0.05_mr0.0_ut3p8"
+    main(training_run_dir) 

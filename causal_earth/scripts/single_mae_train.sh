@@ -17,7 +17,7 @@ EPOCHS=100
 LEARNING_RATE=3e-4
 OUTPUT_DIR="$PROJECT_ROOT/train_logs"
 WANDB_PROJECT="earthnet"
-ENABLE_WANDB=true
+ENABLE_WANDB=false
 MASK_LOSS=false
 
 # Optional: Set additional parameters

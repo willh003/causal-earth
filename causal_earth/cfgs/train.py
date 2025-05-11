@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+import yaml
 
 import os
 import time
@@ -16,7 +16,10 @@ EUROSAT_TASK_TO_TARGET_SIZE = {"m-SA-crop-type": (256, 256), "m-cashew-plant": (
 
 @dataclass
 class MAEConfig:
-    """Configuration for Masked Autoencoder (MAE) training."""
+    """Configuration for Masked Autoencoder (MAE) or I-JEPA training."""
+    
+    # Model type
+    model_type: str = field(default="mae", metadata={"help": "Type of model to train ('mae' or 'ijepa')"})
     
     # Dataset paths
     train_dir: str = field(default="data/imagenet/train", metadata={"help": "Path to training dataset directory"})
@@ -27,7 +30,7 @@ class MAEConfig:
     # Model configuration
     ckpt_path: Optional[str] = field(default=None, metadata={"help": "Path to pretrained checkpoint (optional)"})
     mask_ratio: float = field(default=0.75, metadata={"help": "Ratio of masked patches during training (0.0-1.0)"})
-    
+
     # Training parameters
     batch_size: int = field(default=256, metadata={"help": "Batch size per GPU/CPU for training and evaluation"})
     epochs: int = field(default=400, metadata={"help": "Total number of training epochs"})
@@ -73,7 +76,10 @@ class MAEConfig:
         random_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
         
         # Generate hyperparameter string
-        hyperparams = f"bs{self.batch_size}_lr{self.learning_rate}_wd{self.weight_decay}_mr{self.mask_ratio}"
+        if self.model_type == "mae":
+            hyperparams = f"bs{self.batch_size}_lr{self.learning_rate}_wd{self.weight_decay}_mr{self.mask_ratio}"
+        else:  # ijepa
+            hyperparams = f"bs{self.batch_size}_lr{self.learning_rate}_wd{self.weight_decay}_pred{self.predictor_embed_dim}"
         
         # Create run directory with timestamp and hyperparams
         self.run_dir = os.path.join(self.output_dir, f"{timestamp}_{hyperparams}_{random_id}")
@@ -88,16 +94,23 @@ class MAEConfig:
         os.makedirs(self.logs_dir, exist_ok=True)
         os.makedirs(self.ckpts_dir, exist_ok=True)
         os.makedirs(self.wandb_dir, exist_ok=True)
+        os.makedirs(self.cfg_dir, exist_ok=True)
         
         # Set default wandb run name with timestamp and random ID
         if not self.wandb_run_name:
-            self.wandb_run_name = f"mae_{timestamp}_{random_id}"
+            self.wandb_run_name = f"{self.model_type}_{timestamp}_{random_id}"
 
         if self.wandb_tags is None:
             self.wandb_tags = []
-        self.wandb_tags = self.wandb_tags + [["all_loss", "mask_loss"][self.mask_loss], ["scratch", "pretrained"][bool(self.ckpt_path)], f"r_{self.mask_ratio}"]
+        self.wandb_tags = self.wandb_tags + [
+            ["all_loss", "mask_loss"][self.mask_loss],
+            ["scratch", "pretrained"][bool(self.ckpt_path)],
+            f"r_{self.mask_ratio}",
+            self.model_type
+        ]
 
         # Validate parameters
+        assert self.model_type in ["mae", "ijepa"], "Model type must be either 'mae' or 'ijepa'"
         assert 0.0 <= self.mask_ratio <= 1.0, "Mask ratio must be between 0 and 1"
         assert self.optimizer in ["adamw", "sgd"], "Optimizer must be one of [adamw, sgd]"
         assert self.scheduler in ["cosine", "step", "none"], "Scheduler must be one of [cosine, step, none]"
@@ -105,6 +118,7 @@ class MAEConfig:
         # Save config as a yaml
         with open(os.path.join(self.cfg_dir, "config.yaml"), "w") as f:
             yaml.dump(self.__dict__, f)
+
 
 @dataclass
 class EvalConfig(MAEConfig):
@@ -145,6 +159,43 @@ class EvalConfig(MAEConfig):
         assert self.task_name in EUROSAT_TASK_TO_NUM_CLASSES, f"Task {self.task_name} not found in task_to_num_classes"
         self.num_classes = EUROSAT_TASK_TO_NUM_CLASSES[self.task_name]  # Number of classes for m-brick-kiln (presence/absence)
 
+        # Save config as a yaml
+        cfg_path = os.path.join(self.cfg_dir, "config.yaml")
+        if os.path.exists(cfg_path):
+            # remove the file if it was created by super().__post_init__
+            os.remove(cfg_path)
+
+        with open(cfg_path, "w") as f:
+            yaml.dump(self.__dict__, f)
+
+@dataclass
+class IJEPAConfig(MAEConfig):
+    """Configuration for I-JEPA training."""
+    
+        
+    # I-JEPA specific parameters
+    predictor_embed_dim: int = field(default=512, metadata={"help": "Embedding dimension for I-JEPA predictor"})
+    predictor_depth: int = field(default=8, metadata={"help": "Number of transformer layers in I-JEPA predictor"})
+    predictor_num_heads: int = field(default=16, metadata={"help": "Number of attention heads in I-JEPA predictor"})
+    num_target_blocks: int = field(default=4, metadata={"help": "Number of target blocks for I-JEPA"})
+    target_scale_range: tuple = field(default=(0.15, 0.2), metadata={"help": "Scale range for target blocks in I-JEPA"})
+    target_aspect_ratio_range: tuple = field(default=(0.75, 1.5), metadata={"help": "Aspect ratio range for target blocks in I-JEPA"})
+    context_scale_range: tuple = field(default=(0.85, 1.0), metadata={"help": "Scale range for context block in I-JEPA"})
+    
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.wandb_tags = ["ijepa"]
+            
+        assert self.predictor_embed_dim > 0, "Predictor embedding dimension must be positive"
+        assert self.predictor_depth > 0, "Predictor depth must be positive"
+        assert self.predictor_num_heads > 0, "Predictor number of heads must be positive"
+        assert self.num_target_blocks > 0, "Number of target blocks must be positive"
+        assert 0 < self.target_scale_range[0] <= self.target_scale_range[1] < 1, "Target scale range must be between 0 and 1"
+        assert 0 < self.target_aspect_ratio_range[0] <= self.target_aspect_ratio_range[1], "Target aspect ratio range must be positive"
+        assert 0 < self.context_scale_range[0] <= self.context_scale_range[1] <= 1, "Context scale range must be between 0 and 1"
+
+
 # Example usage
 if __name__ == "__main__":
     # Example with default values
@@ -163,4 +214,6 @@ if __name__ == "__main__":
         wandb_project="mae-custom-experiment"
     )
     print(f"Custom config created with batch size: {custom_cfg.batch_size}")
+
+__all__ = ['MAEConfig', 'EvalConfig']
 
