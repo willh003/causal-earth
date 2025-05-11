@@ -97,15 +97,19 @@ class IJEPA(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward_target_encoder(self, x, target_masks):
-        # embed patches
+        # Reshape target masks to match sequence length
+        b, l, h, w = target_masks.shape
+        target_masks = target_masks.view(b, h*w, l)
+        
+        # Apply target encoder
         x = self.target_patch_embed(x)
         
         # add pos embed w/o cls token
         x = x + self.target_pos_embed[:, 1:, :]
-
-        # Apply target masks
-        x = x * target_masks.unsqueeze(-1)
-
+        
+        # Apply masks
+        x = x * target_masks  # [B, 196, 1024]
+        
         # append cls token
         cls_token = self.target_cls_token + self.target_pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
@@ -120,13 +124,16 @@ class IJEPA(nn.Module):
 
     def forward_context_encoder(self, x, context_masks):
         # embed patches
+        b, l, h, w = context_masks.shape
+        context_masks = context_masks.view(b, h*w, l)
+
         x = self.context_patch_embed(x)
         
         # add pos embed w/o cls token
         x = x + self.context_pos_embed[:, 1:, :]
 
         # Apply context masks
-        x = x * context_masks.unsqueeze(-1)
+        x = x * context_masks
 
         # append cls token
         cls_token = self.context_cls_token + self.context_pos_embed[:, :1, :]
@@ -204,10 +211,7 @@ def ijepa_vit_base_patch16(**kwargs):
 
 
 def ijepa_vit_large_patch16(**kwargs):
-    model = IJEPA(
-        embed_dim=1024, depth=24, num_heads=16,
-        predictor_embed_dim=512, predictor_depth=8, predictor_num_heads=16,
-        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    model = IJEPA(**kwargs)
     return model
 
 
