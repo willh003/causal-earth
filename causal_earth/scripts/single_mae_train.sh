@@ -7,7 +7,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
 
 # Configuration
-# TRAIN_DIR="/home/wph52/greenearthnet/earthnet2021x/train/29SND"
+# TRAIN_DIR="/home/wph52/greenearthnet/earthnet2021x/train"
 TRAIN_DIR="/home/wph52/earthnet2021/earthnet2021x/train/"
 VAL_DIR="/home/wph52/earthnet2021/earthnet2021x/val/"
 FAST_ACCESS=true

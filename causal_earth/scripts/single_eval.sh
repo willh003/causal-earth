@@ -7,7 +7,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
 
 # Configuration
-PRETRAINED_MAE_PATH="/home/wph52/causal-earth/causal_earth/train_logs/mae_scratch_mask0.75/20250413_154046_bs16_lr0.0003_wd0.05_mr0.75_m5osr/ckpts/final_checkpoint.pth"
+PRETRAINED_MAE_PATH="/home/wph52/causal-earth/causal_earth/ckpts/fmow_pretrain.pth"
 BATCH_SIZE=32
 EPOCHS=100
 LEARNING_RATE=1e-4
