@@ -16,11 +16,24 @@ def pixel_swap(images, patch_dim):
         2) (height / patch_dim) % 2 == 0
         3) (patch_dim % 2) == 0
     """
+    device=images.device
 
-    b,_,h,w = images.size() # (b,c,h,w)
+    b,c,h,w = images.size() # (b,c,h,w)
     row, col = torch.meshgrid(torch.arange(h), torch.arange(w), indexing='ij')
-    col = col - (patch_dim * ( (row+col)%2 ) * ( 2*((col//patch_dim)%2)-1 ))
-    images = images[torch.arange(b)[None], row[None], col[None]]
 
-    return images
+    col=col.to(device, non_blocking=True)
+    row=row.to(device, non_blocking=True)
+
+    col = col - (patch_dim * ( (row+col)%2 ) * ( 2*((col//patch_dim)%2)-1 ))
+
+    row_flat = row.flatten()
+    col_flat = col.flatten()
+    idx : torch.Tensor = row_flat*w + col_flat
+
+    images_flat = images.view(b, c, -1)
+    idx = idx[None,None].expand(b, c, -1)
+
+    images_swapped = torch.gather(images_flat, 2, idx).view(b, c, h, w)   
+
+    return images_swapped
         

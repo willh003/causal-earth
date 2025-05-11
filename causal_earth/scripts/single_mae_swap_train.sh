@@ -8,8 +8,8 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
 
 # Configuration
 # TRAIN_DIR="/home/data/greenearthnet/earthnet2021x/train/29SND"
-TRAIN_DIR="/home/sean/data/earthnet2021/earthnet2021x/train/"
-VAL_DIR="/home/sean/data/earthnet2021/earthnet2021x/val/"
+TRAIN_DIR="/home/sean/data/earthnet2021x/train/"
+VAL_DIR="/home/sean/data/earthnet2021x/val/"
 FAST_ACCESS=true
 CHECKPOINT_PATH="/home/sean/proj/CausalEarth/causal_earth/ckpts/fmow_pretrain.pth"
 BATCH_SIZE=16
