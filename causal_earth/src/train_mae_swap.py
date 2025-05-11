@@ -398,8 +398,8 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
             pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1])  # expand from 14x14 patches to 224*224 pixels
             vis_mask = model.unpatchify(pixel_mask.int(), p=patch_size, c=1)[0]  # get mask for entire image
 
-            vis_image = pixel_swap(vis_image[None], patch_dim=14)
-            vis_pred = pixel_swap(vis_pred[None], patch_dim=14)
+            vis_image = pixel_swap(vis_image[None], patch_dim=14)[0]
+            vis_pred = pixel_swap(vis_pred[None], patch_dim=14)[0]
             ### END SWAP
 
             masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
@@ -435,10 +435,10 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
     with torch.no_grad():
         for batch_idx, images in enumerate(progress):
             # Move data to device
-            images = images.to(device, non_blocking=True)
+            images = images.to(device, non_blocking=False)
 
             ### BEGIN SWAP
-            images = pixel_swap(images)
+            images = pixel_swap(images, patch_dim=14)
             
             # Forward pass
             loss, pred_images, mask = model(images, mask_ratio=cfg.mask_ratio)
@@ -459,10 +459,10 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
                 pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1])  # expand from 14x14 patches to 224*224 pixels
                 vis_mask = model.unpatchify(pixel_mask.int(), p=patch_size, c=1)[0]  # get mask for entire image
 
-                vis_image = pixel_swap(vis_image[None], patch_dim=14)
-                vis_pred = pixel_swap(vis_pred[None], patch_dim=14)
+                vis_image = pixel_swap(vis_image[None], patch_dim=14)[0]
+                vis_pred = pixel_swap(vis_pred[None], patch_dim=14)[0]
                 ### END SWAP
-                
+
                 masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
                 masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
 
