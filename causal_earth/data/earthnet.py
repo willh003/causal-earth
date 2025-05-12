@@ -113,8 +113,12 @@ class IJEPACollator:
         block_widths = torch.clamp(block_widths, 1, grid_w)
         
         # Generate random positions
-        pos_h = torch.randint(0, grid_h - block_heights + 1, (batch_size, num_blocks))
-        pos_w = torch.randint(0, grid_w - block_widths + 1, (batch_size, num_blocks))
+        pos_h = torch.zeros(batch_size, num_blocks, dtype=torch.long)
+        pos_w = torch.zeros(batch_size, num_blocks, dtype=torch.long)
+        for b in range(batch_size):
+            for n in range(num_blocks):
+                pos_h[b, n] = torch.randint(0, grid_h - block_heights[b, n] + 1, (1,))
+                pos_w[b, n] = torch.randint(0, grid_w - block_widths[b, n] + 1, (1,))
         
         # Create masks
         masks = torch.zeros(batch_size, num_blocks, grid_h, grid_w)
@@ -177,6 +181,6 @@ class IJEPACollator:
             # Get all target blocks for this image
             target_blocks = target_masks[b].sum(dim=0) > 0
             # Remove target regions from context mask
-            context_masks[b, 0] = context_masks[b, 0] * (1 - target_blocks)
+            context_masks[b, 0] = context_masks[b, 0] * (~target_blocks).float()
         
         return images, context_masks, target_masks 

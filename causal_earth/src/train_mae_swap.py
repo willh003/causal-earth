@@ -15,22 +15,20 @@ from typing import Union
 import earthnet_models_pytorch as emp
 from earthnet_models_pytorch.data.en21x_data import EarthNet2021XDataset
 
-from causal_earth.models import ijepa_vit_large_patch16
-from causal_earth.cfgs.train import MAEConfig
-from causal_earth.utils import interpolate_pos_embed
-from causal_earth.data.earthnet import IJEPACollator
+from causal_earth.models import mae_vit_large_patch16_dec512d8b
+from causal_earth.cfgs import MAEConfig
+from causal_earth.utils import interpolate_pos_embed, visualize_masked_image, pixel_swap
+from causal_earth.data.earthnet import EarthNetCollator
+
 
 @draccus.wrap()
 def main(cfg: MAEConfig):
     """
-    Main training function for I-JEPA.
+    Main training function for Masked Autoencoder (MAE) or I-JEPA.
     
     Args:
         cfg: Configuration object containing training parameters
     """
-    # Set model type to ijepa
-    cfg.model_type = "ijepa"
-    
     # Initialize wandb
     initialize_wandb(cfg)
     
@@ -51,11 +49,7 @@ def main(cfg: MAEConfig):
     ])
     
     # Create collator
-    collator = IJEPACollator(
-        transform=transform,
-        num_target_blocks=cfg.num_target_blocks,
-        patch_size=16  # Fixed for ViT-Large
-    )
+    collator = EarthNetCollator(transform=transform)
     
     # Prepare datasets and dataloaders
     train_set = EarthNet2021XDataset(cfg.train_dir, dl_cloudmask = True, allow_fastaccess = cfg.allow_fastaccess)
@@ -67,7 +61,7 @@ def main(cfg: MAEConfig):
         shuffle=True,
         num_workers=cfg.num_workers,
         pin_memory=torch.cuda.is_available(),
-        collate_fn=collator
+        collate_fn=collator,
     )
     val_loader = DataLoader(
         val_set,
@@ -83,6 +77,11 @@ def main(cfg: MAEConfig):
     
     # Set up checkpointing
     checkpoint_manager = CheckpointManager(cfg.ckpts_dir)
+    
+    # First evaluation
+    # if val_loader:
+    #     val_metrics = evaluate_model(model, val_loader, device, epoch=0, cfg=cfg)
+    #     log_metrics(val_metrics, epoch=0, prefix="val")
     
     # Training loop
     train_model(
@@ -111,8 +110,9 @@ def main(cfg: MAEConfig):
 
 def initialize_wandb(cfg):
     """Initialize Weights & Biases logging."""
+
     wandb.init(
-        project=cfg.wandb_project,
+        project="earth",
         entity="pcgc",
         name=cfg.wandb_run_name,
         config=vars(cfg),
@@ -139,12 +139,9 @@ def setup_device(cfg):
 
 def build_model(cfg):
     """Build and initialize the model with pretrained weights if available."""
-    # Initialize model
-    model = ijepa_vit_large_patch16(
-        predictor_embed_dim=cfg.predictor_embed_dim,
-        predictor_depth=cfg.predictor_depth,
-        predictor_num_heads=cfg.predictor_num_heads
-    )
+    # Initialize model based on config type
+
+    model = mae_vit_large_patch16_dec512d8b(mask_loss=cfg.mask_loss)
     
     # Load pre-trained weights if provided
     if cfg.ckpt_path:
@@ -249,6 +246,7 @@ class CheckpointManager:
         torch.save(checkpoint, checkpoint_path)
         print(f"Checkpoint saved to {checkpoint_path}")
         
+
     def load_latest_checkpoint(self, model, optimizer, scheduler=None):
         """Load the latest checkpoint if available."""
         checkpoints = glob.glob(os.path.join(self.ckpts_dir, "checkpoint_epoch_*.pth"))
@@ -342,18 +340,19 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
     progress = tqdm(data_loader, desc=f'Epoch {epoch}')
     
     end = time.time()
-    for batch_idx, (images, context_masks, target_masks) in enumerate(progress):
+    for batch_idx, images in enumerate(progress):
         # Measure data loading time
         data_time.update(time.time() - end)
         
         # Move data to device
         images = images.to(device, non_blocking=True)
-        context_masks = context_masks.to(device, non_blocking=True)
-        target_masks = target_masks.to(device, non_blocking=True)
-        
+
+        ### BEGIN SWAP
+        images = pixel_swap(images, patch_dim=14) # NOTE: hard-coded patch size
+
         # Forward pass with mixed precision if enabled
         with torch.cuda.amp.autocast(enabled=cfg.use_amp):
-            loss = model(images, context_masks, target_masks)
+            loss, pred_images, mask = model(images, mask_ratio=cfg.mask_ratio)
         
         # Backward pass
         optimizer.zero_grad()
@@ -387,27 +386,33 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
                 'train/epoch': epoch,
                 'train/step': epoch * len(data_loader) + batch_idx
             })
-            
+    
+
         # Visualize some examples
         if batch_idx == 0:
-            # Get predictions for visualization
-            with torch.no_grad():
-                pred_images = model.predict(images, context_masks)
-            
-            # Visualize first image in batch
+            patch_size = int(224/14)  # TODO: hard coded patch size
+            unpatched_preds = model.unpatchify(pred_images, p=patch_size, c=images.shape[1])
+
             vis_image = images[0]
-            vis_pred = pred_images[0]
-            vis_context = context_masks[0, 0]
-            vis_target = target_masks[0].sum(dim=0) > 0
-            
-            # Create visualization
+            vis_pred = unpatched_preds[0]
+            pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1])  # expand from 14x14 patches to 224*224 pixels
+            vis_mask = model.unpatchify(pixel_mask.int(), p=patch_size, c=1)[0]  # get mask for entire image
+
+            vis_image = pixel_swap(vis_image[None], patch_dim=14)[0]
+            vis_pred = pixel_swap(vis_pred[None], patch_dim=14)[0]
+            ### END SWAP
+
+            masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
+            masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16)  # patch size 16 for pretrained MA
+
             example_images = {
+                # wandb uses PIL format (h, w, c) * 255
                 "full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
-                "context_mask": wandb.Image(vis_context.cpu().numpy() * 255, caption="context mask"),
-                "target_mask": wandb.Image(vis_target.cpu().numpy() * 255, caption="target mask"),
-                "prediction": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="prediction"),
+                "masked_image": wandb.Image(masked_image * 255, caption="masked image"),
+                "masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
+                "full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
             }
-            
+
             log_metrics(example_images, epoch, prefix="train")
     
     return {
@@ -428,14 +433,15 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
     progress = tqdm(data_loader, desc=f'Evaluation {epoch}')
     
     with torch.no_grad():
-        for batch_idx, (images, context_masks, target_masks) in enumerate(progress):
+        for batch_idx, images in enumerate(progress):
             # Move data to device
-            images = images.to(device, non_blocking=True)
-            context_masks = context_masks.to(device, non_blocking=True)
-            target_masks = target_masks.to(device, non_blocking=True)
+            images = images.to(device, non_blocking=False)
+
+            ### BEGIN SWAP
+            images = pixel_swap(images, patch_dim=14)
             
             # Forward pass
-            loss = model(images, context_masks, target_masks)
+            loss, pred_images, mask = model(images, mask_ratio=cfg.mask_ratio)
             
             # Update metrics
             loss_meter.update(loss.item(), images.size(0))
@@ -445,23 +451,29 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
             
             # Visualize some examples
             if batch_idx == 0:
-                # Get predictions for visualization
-                pred_images = model.predict(images, context_masks)
-                
-                # Visualize first image in batch
+                patch_size = int(224/14)  # TODO: hard coded patch size
+                unpatched_preds = model.unpatchify(pred_images, p=patch_size, c=images.shape[1])
+
                 vis_image = images[0]
-                vis_pred = pred_images[0]
-                vis_context = context_masks[0, 0]
-                vis_target = target_masks[0].sum(dim=0) > 0
-                
-                # Create visualization
+                vis_pred = unpatched_preds[0]
+                pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1])  # expand from 14x14 patches to 224*224 pixels
+                vis_mask = model.unpatchify(pixel_mask.int(), p=patch_size, c=1)[0]  # get mask for entire image
+
+                vis_image = pixel_swap(vis_image[None], patch_dim=14)[0]
+                vis_pred = pixel_swap(vis_pred[None], patch_dim=14)[0]
+                ### END SWAP
+
+                masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
+                masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
+
                 example_images = {
+                    # wandb uses PIL format (h, w, c) * 255
                     "full_image": wandb.Image(vis_image.cpu().permute(1, 2, 0).numpy() * 255, caption="full image"),
-                    "context_mask": wandb.Image(vis_context.cpu().numpy() * 255, caption="context mask"),
-                    "target_mask": wandb.Image(vis_target.cpu().numpy() * 255, caption="target mask"),
-                    "prediction": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="prediction"),
+                    "masked_image": wandb.Image(masked_image * 255, caption="masked image"),
+                    "masked_preds": wandb.Image(masked_preds * 255, caption="masked preds"),
+                    "full_preds": wandb.Image(vis_pred.detach().cpu().permute(1, 2, 0).numpy() * 255, caption="full preds"),
                 }
-                
+
                 log_metrics(example_images, epoch, prefix="val")
     
     return {
@@ -502,4 +514,4 @@ class AverageMeter:
         return fmtstr.format(**self.__dict__)
 
 if __name__ == "__main__":
-    main() 
+    main()
