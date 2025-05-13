@@ -75,7 +75,6 @@ def main(cfg: MAEConfig):
     train_set = FilteredDataset(train_set)
     val_set = FilteredDataset(val_set)
 
-    
     train_loader = DataLoader(
         train_set,
         batch_size=cfg.batch_size,
@@ -439,8 +438,8 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
             log_metrics(example_images, epoch, prefix="train")
 
             # save images locally
-            for name, image in example_images.items():
-                image.image.save(F"/home/sean/proj/CausalEarth/causal_earth/{name}.png")
+            # for name, image in example_images.items():
+            #     image.image.save(F"./{name}.png")
 
             # composite images together
             grid = PIL.Image.new("RGB", (448,448))
@@ -450,7 +449,7 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
             for (name, origin) in zip(["full_image","masked_image","masked_preds","full_preds"], [(0,0),(224,0),(224,224),(0,224)]):
                 grid.paste(example_images[name].image, origin)
 
-            grid.save(F"/home/sean/proj/CausalEarth/causal_earth/grid.png")
+            grid.save(F"./grid.png")
             ##
     
     return {
