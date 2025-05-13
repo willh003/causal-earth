@@ -3,7 +3,7 @@ import glob
 import wandb
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 import os
 import time
@@ -20,6 +20,9 @@ from causal_earth.cfgs import MAEConfig
 from causal_earth.utils import interpolate_pos_embed, visualize_masked_image, pixel_swap
 from causal_earth.data.earthnet import EarthNetCollator
 
+import PIL
+
+PATCH_SIZE = 16
 
 @draccus.wrap()
 def main(cfg: MAEConfig):
@@ -54,6 +57,24 @@ def main(cfg: MAEConfig):
     # Prepare datasets and dataloaders
     train_set = EarthNet2021XDataset(cfg.train_dir, dl_cloudmask = True, allow_fastaccess = cfg.allow_fastaccess)
     val_set = EarthNet2021XDataset(cfg.val_dir, dl_cloudmask = True, allow_fastaccess = cfg.allow_fastaccess) if cfg.val_dir else None
+
+    # This is to get rid of the blank images.
+    class FilteredDataset(Dataset):
+        def __init__(self, original_dataset):
+            self.original_dataset = original_dataset
+            self.valid_indices = [i for i in range(len(original_dataset)) if original_dataset[i]["dynamic"][0][0, 1:4, ...].std((1,2)).max() > 1e-2]
+
+            print(F"Filtered {len(original_dataset) - len(self.valid_indices)} blank images.")
+
+        def __len__(self):
+            return len(self.valid_indices)
+
+        def __getitem__(self, idx):
+            return self.original_dataset[self.valid_indices[idx]]
+        
+    train_set = FilteredDataset(train_set)
+    val_set = FilteredDataset(val_set)
+
     
     train_loader = DataLoader(
         train_set,
@@ -348,7 +369,7 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
         images = images.to(device, non_blocking=True)
 
         ### BEGIN SWAP
-        images = pixel_swap(images, patch_dim=14) # NOTE: hard-coded patch size
+        images = pixel_swap(images, patch_size=PATCH_SIZE) # NOTE: Uses patch size of 16.
 
         # Forward pass with mixed precision if enabled
         with torch.cuda.amp.autocast(enabled=cfg.use_amp):
@@ -398,12 +419,14 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
             pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1])  # expand from 14x14 patches to 224*224 pixels
             vis_mask = model.unpatchify(pixel_mask.int(), p=patch_size, c=1)[0]  # get mask for entire image
 
-            vis_image = pixel_swap(vis_image[None], patch_dim=14)[0]
-            vis_pred = pixel_swap(vis_pred[None], patch_dim=14)[0]
-            ### END SWAP
+            masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=PATCH_SIZE)  # patch size 16 for pretrained MAEs
+            masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=PATCH_SIZE)  # patch size 16 for pretrained MA
 
-            masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
-            masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16)  # patch size 16 for pretrained MA
+            ### END SWAP
+            vis_image = pixel_swap(vis_image, patch_size=PATCH_SIZE)
+            vis_pred = pixel_swap(vis_pred, patch_size=PATCH_SIZE)
+            masked_image = pixel_swap(masked_image, patch_size=PATCH_SIZE)
+            masked_preds = pixel_swap(masked_preds, patch_size=PATCH_SIZE)
 
             example_images = {
                 # wandb uses PIL format (h, w, c) * 255
@@ -414,6 +437,21 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
             }
 
             log_metrics(example_images, epoch, prefix="train")
+
+            # save images locally
+            for name, image in example_images.items():
+                image.image.save(F"/home/sean/proj/CausalEarth/causal_earth/{name}.png")
+
+            # composite images together
+            grid = PIL.Image.new("RGB", (448,448))
+
+
+
+            for (name, origin) in zip(["full_image","masked_image","masked_preds","full_preds"], [(0,0),(224,0),(224,224),(0,224)]):
+                grid.paste(example_images[name].image, origin)
+
+            grid.save(F"/home/sean/proj/CausalEarth/causal_earth/grid.png")
+            ##
     
     return {
         'loss': loss_meter.avg,
@@ -438,7 +476,7 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
             images = images.to(device, non_blocking=False)
 
             ### BEGIN SWAP
-            images = pixel_swap(images, patch_dim=14)
+            images = pixel_swap(images, patch_size=PATCH_SIZE)
             
             # Forward pass
             loss, pred_images, mask = model(images, mask_ratio=cfg.mask_ratio)
@@ -459,12 +497,15 @@ def evaluate_model(model, data_loader, device, epoch, cfg):
                 pixel_mask = mask[:, :, None].expand(*mask.size(), pred_images.shape[-1] // images.shape[1])  # expand from 14x14 patches to 224*224 pixels
                 vis_mask = model.unpatchify(pixel_mask.int(), p=patch_size, c=1)[0]  # get mask for entire image
 
-                vis_image = pixel_swap(vis_image[None], patch_dim=14)[0]
-                vis_pred = pixel_swap(vis_pred[None], patch_dim=14)[0]
-                ### END SWAP
 
-                masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
-                masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=16)  # patch size 16 for pretrained MAEs
+                masked_image = visualize_masked_image(vis_image, vis_mask, patch_size=PATCH_SIZE)  # patch size 16 for pretrained MAEs
+                masked_preds = visualize_masked_image(vis_pred, 1-vis_mask, patch_size=PATCH_SIZE)  # patch size 16 for pretrained MAEs
+
+                ### END SWAP
+                vis_image = pixel_swap(vis_image, patch_size=PATCH_SIZE)
+                vis_pred = pixel_swap(vis_pred, patch_size=PATCH_SIZE)
+                masked_image = pixel_swap(masked_image, patch_size=PATCH_SIZE)
+                masked_preds = pixel_swap(masked_preds, patch_size=PATCH_SIZE)
 
                 example_images = {
                     # wandb uses PIL format (h, w, c) * 255
