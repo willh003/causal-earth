@@ -100,9 +100,9 @@ def main(cfg: MAEConfig):
     checkpoint_manager = CheckpointManager(cfg.ckpts_dir)
     
     # First evaluation
-    # if val_loader:
-    #     val_metrics = evaluate_model(model, val_loader, device, epoch=0, cfg=cfg)
-    #     log_metrics(val_metrics, epoch=0, prefix="val")
+    if val_loader:
+        val_metrics = evaluate_model(model, val_loader, device, epoch=0, cfg=cfg)
+        log_metrics(val_metrics, epoch=0, prefix="val")
     
     # Training loop
     train_model(
