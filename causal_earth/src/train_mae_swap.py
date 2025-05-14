@@ -365,7 +365,7 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
         data_time.update(time.time() - end)
         
         # Move data to device
-        images = images.to(device, non_blocking=True)
+        images = images.to(device)
 
         ### BEGIN SWAP
         images = pixel_swap(images, patch_size=PATCH_SIZE) # NOTE: Uses patch size of 16.
@@ -443,8 +443,6 @@ def train_one_epoch(model, data_loader, optimizer, device, epoch, scaler, cfg):
 
             # composite images together
             grid = PIL.Image.new("RGB", (448,448))
-
-
 
             for (name, origin) in zip(["full_image","masked_image","masked_preds","full_preds"], [(0,0),(224,0),(224,224),(0,224)]):
                 grid.paste(example_images[name].image, origin)
