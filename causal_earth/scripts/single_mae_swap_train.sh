@@ -7,7 +7,13 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
 
 # Configuration
-# TRAIN_DIR="/home/data/greenearthnet/earthnet2021x/train/29SND"
+# --- Sean
+# TRAIN_DIR="/home/sean/data/earthnet2021/earthnet2021x/train/"
+# VAL_DIR="/home/sean/data/earthnet2021/earthnet2021x/val/"
+# FAST_ACCESS=true
+# CHECKPOINT_PATH="/home/sean/proj/CausalEarth/causal_earth/ckpts/fmow_pretrain.pth"
+
+# --- Will
 TRAIN_DIR="/home/wph52/earthnet2021/earthnet2021x/train/"
 VAL_DIR="/home/wph52/earthnet2021/earthnet2021x/val/"
 FAST_ACCESS=true
