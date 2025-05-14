@@ -35,9 +35,9 @@ TIME="30:00:00"
 
 # Define multiple tasks to run
 declare -a TASKS=(
-   "m-brick-kiln"
+   #"m-brick-kiln"
    "m-eurosat"
-   "m-cashew-plant"
+   #"m-cashew-plant"
    "m-SA-crop-type"
   # Add more tasks here as needed
 )

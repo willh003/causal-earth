@@ -8,20 +8,20 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
 
 # Configuration
 # TRAIN_DIR="/home/data/greenearthnet/earthnet2021x/train/29SND"
-TRAIN_DIR="/home/sean/data/earthnet2021x/train/"
-VAL_DIR="/home/sean/data/earthnet2021x/val/"
+TRAIN_DIR="/home/wph52/earthnet2021/earthnet2021x/train/"
+VAL_DIR="/home/wph52/earthnet2021/earthnet2021x/val/"
 FAST_ACCESS=true
-CHECKPOINT_PATH="/home/sean/proj/CausalEarth/causal_earth/ckpts/fmow_pretrain.pth"
+CHECKPOINT_PATH="/home/wph52/causal-earth/causal_earth/ckpts/fmow_pretrain.pth"
 BATCH_SIZE=16
 EPOCHS=100
 LEARNING_RATE=3e-4
 OUTPUT_DIR="$PROJECT_ROOT/train_logs"
 WANDB_PROJECT="earthnet"
-ENABLE_WANDB=false
-MASK_LOSS=false
+ENABLE_WANDB=true
+MASK_LOSS=true
 
 # Optional: Set additional parameters
-MASK_RATIO=0.0
+MASK_RATIO=0.75
 NUM_WORKERS=8
 USE_AMP=false
 OPTIMIZER="adamw"
