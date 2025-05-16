@@ -119,12 +119,12 @@ def interpolate_pos_embed(model, checkpoint_model):
 
 
 def attention_rollout(attentions):
-    # Initialize rollout with identity matrix
-    rollout = torch.eye(attentions.size(-1)).to(attentions.device)
-    print("Rollout shape: ", rollout.shape)
+
+    rollout = torch.eye(attentions[0].size(-1)).to(attentions[0].device)
+
     # Multiply attention maps layer by layer
     for attention in attentions:
-        attention_heads_fused = attentions.mean(dim=1)  # Average attention across heads
+        attention_heads_fused = attention.mean(dim=1)  # Average attention across heads
         attention_heads_fused += torch.eye(attention_heads_fused.size(-1)).to(
             attention_heads_fused.device
         )  # A + I
@@ -134,17 +134,6 @@ def attention_rollout(attentions):
         rollout = torch.matmul(rollout, attention_heads_fused)  # Multiplication
 
     return rollout
-
-
-def generate_attention_matrix(qkv_pre, transformer_input):
-    qkv_0 = qkv_pre(transformer_input)[0].reshape(197, 3, 16, 64)
-    q = qkv_0[:, 0].permute(1, 0, 2)
-    k = qkv_0[:, 1].permute(1, 0, 2)
-    kT = k.permute(0, 2, 1)
-
-    # Attention Matrix
-    attention_matrix = q @ kT
-    return attention_matrix
 
 
 def rgba_to_rgb(image):
@@ -159,7 +148,7 @@ def rgba_to_rgb(image):
     return image
 
 
-def get_attn_maps(model, x, mask=None):
+def get_attn_maps(model, x):
     """
     Get attention maps from the model.
     Args:
@@ -169,45 +158,67 @@ def get_attn_maps(model, x, mask=None):
     Returns:
         attn_maps: The attention maps.
     """
-    attentions = {"encoder": [], "decoder": []}  # Placeholder for attention maps
     # Forward pass through the model to get attention maps
     # print(model)
+    # Place this at the top level, outside any function
+    encoder_attention_maps = []
+
+    def save_attention_hook(module, input, output):
+        # output shape: (batch, num_heads, tokens, tokens)
+        # Save a detached copy to avoid memory leaks
+        x = input[0]  # (batch, tokens, embed_dim)
+        B, N, C = x.shape
+        # qkv shape: (batch, tokens, 3 * embed_dim)
+        qkv = (
+            module.qkv(x)
+            .reshape(B, N, 3, module.num_heads, C // module.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        attn = (q @ k.transpose(-2, -1)) * module.scale
+        attn = attn.softmax(dim=-1)
+        attn = module.attn_drop(attn)
+        # print("Raw attention:", attn)
+        print("Raw attention min/max:", attn.min(), attn.max())
+        # attn shape: (batch, num_heads, tokens, tokens)
+        encoder_attention_maps.append(attn.detach().cpu())
 
     for name, module in model.named_modules():
         if isinstance(module, Attention):
             if name.startswith("blocks"):
-                attentions["encoder"].append(module)
-            elif name.startswith("decoder"):
-                attentions["decoder"].append(module)
-    encoder_matrices = []
+                module.register_forward_hook(save_attention_hook)
+    print(x.shape)
+    _ = model(x, mask_ratio=0)  # Forward pass to get attention maps
 
-    patch_input = model.patch_embed(x)
-    pos_embed = model.pos_embed
-    transformer_input = torch.cat((model.cls_token, patch_input), dim=1) + pos_embed
-    print("Transformer input: ", transformer_input.shape)
-    # Attention Matrix
-    for i in range(len(attentions["encoder"])):
-        encoder_matrices.append(
-            generate_attention_matrix(attentions["encoder"][i].qkv, transformer_input)
-        )
-    encoder_matrices = torch.stack(encoder_matrices, dim=0)
-    print("Encoder matrices: ", encoder_matrices)
-    np.set_printoptions(threshold=sys.maxsize)
+    print("encoder_attention_maps: ", encoder_attention_maps[0].shape)
+    encoder_matrices = torch.stack(
+        encoder_attention_maps, dim=0
+    )  # (layers, batch, heads, tokens, tokens)
+    encoder_matrices = encoder_matrices.squeeze(1)  # Remove batch dim if batch=1
 
-    rollout = attention_rollout(encoder_matrices)
+    # print("Encoder matrices: ", encoder_matrices.shape)
+
+    rollout = attention_rollout(encoder_attention_maps)
+    print("Rollout: ", rollout.shape)
     cls_attention = rollout[
         0, 1:, 0
     ]  # Get attention values from [CLS] token to all patches
-    print("cls_attention: ", cls_attention)
+    print("Rollout min/max:", rollout.min(), rollout.max())
+    print("cls_attention: ", cls_attention.shape)
+    np.set_printoptions(threshold=sys.maxsize)
+
     cls_attention = 1 - cls_attention.reshape(
         int(np.sqrt(model.patch_embed.num_patches)),
+        # 7,
         int(np.sqrt(model.patch_embed.num_patches)),
+        # 7,
     )
+    print("cls_attention: ", cls_attention)
+    print("cls_attention max - min: ", cls_attention.max() - cls_attention.min())
     # Normalize the attention map for better visualization
     cls_attention = (cls_attention - cls_attention.min()) / (
         cls_attention.max() - cls_attention.min()
     )
-    print("cls_attention normalized: ", cls_attention)
     # Resize and blur the attention map
     imsize = 128
     cls_attention_resized = Image.fromarray(

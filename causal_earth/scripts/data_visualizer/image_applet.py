@@ -8,6 +8,7 @@ import streamlit as st
 from earthnet_models_pytorch.data.en21x_data import EarthNet2021XDataset
 from causal_earth.models import mae_vit_large_patch16_dec512d8b
 from causal_earth.cfgs import MAEConfig
+from causal_earth.data.earthnet import EarthNetCollator
 import draccus
 import torch
 from causal_earth.utils import interpolate_pos_embed
@@ -60,6 +61,7 @@ def streamlit_app():
             shuffle=True,
             num_workers=1,  # please change I have a shitty computer that crashes if more than 4
             pin_memory=torch.cuda.is_available(),
+            collate_fn=st.session_state.collator,
         )
         print("train_loader created")
 
@@ -70,18 +72,19 @@ def streamlit_app():
         and others are set to 0.
         """
         # Assuming the image is in the format (C, H, W)
+
         if image.dim() == 3:
             image = image.unsqueeze(0)
         # Evaluate the image in model
+        print("Input min/max before normalization:", image.min(), image.max())
+        if image.max() > 1.0 or image.min() < 0.0:
+            image = (image - image.min()) / (image.max() - image.min())
+            print("Image scaled to [0, 1] range.")
         model = st.session_state.model
         image = st.session_state.transform(image)  # normalize the rgb image
-        loss, pred_images, mask = model(
-            image, mask_ratio=st.session_state.app_cfg.mask_ratio
-        )
-        # Extract attention weights from the model output
-        # attentions = output[1]  # Assuming the second element contains attention weights
-        # print(model.modules())
-        return get_attn_maps(model, image, mask)
+        print("Input min/max after normalization:", image.min(), image.max())
+
+        return get_attn_maps(model, image)
         # rgb *= attention
         # Get the attention mask from the model output
 
@@ -189,36 +192,6 @@ def streamlit_app():
     st.write(f"Total Images: {len(st.session_state.train_loader)}")
 
 
-def load_pretrained_weights(model, ckpt_path):
-    """Load pretrained weights into the model."""
-    print(f"Loading pre-trained checkpoint from: {ckpt_path}")
-    checkpoint = torch.load(ckpt_path, map_location="cpu")
-    checkpoint_model = checkpoint["model"]
-    state_dict = model.state_dict()
-
-    # Handle incompatible keys
-    incompatible_keys = [
-        "pos_embed",
-        "patch_embed.proj.weight",
-        "patch_embed.proj.bias",
-        "head.weight",
-        "head.bias",
-    ]
-    for k in incompatible_keys:
-        if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-            print(f"Removing key {k} from pretrained checkpoint")
-            del checkpoint_model[k]
-
-    # Handle positional embeddings
-    interpolate_pos_embed(model, checkpoint_model)
-
-    # Load state dict
-    msg = model.load_state_dict(checkpoint_model, strict=False)
-    print(msg)
-
-    return model
-
-
 @draccus.wrap()
 def main(cfg: MAEConfig):
     if "initialized" not in st.session_state:
@@ -247,6 +220,10 @@ def main(cfg: MAEConfig):
                         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
                     ),
                 ]
+            )
+        if "collator" not in st.session_state:
+            st.session_state.collator = EarthNetCollator(
+                transform=st.session_state.transform
             )
         # global train_set, model, app_cfg
 
@@ -281,11 +258,12 @@ def main(cfg: MAEConfig):
         )
 
         st.session_state.model = mae_vit_large_patch16_dec512d8b()
-        # Load pre-trained weights if provided
-        if cfg.ckpt_path:
-            st.session_state.model = load_pretrained_weights(
-                st.session_state.model, cfg.ckpt_path
-            )
+
+        state_dict = torch.load(
+            "../models/fmow_pretrain.pth", map_location=torch.device("cpu")
+        )
+        st.session_state.model.load_state_dict(state_dict["model"])
+
         st.session_state.initialized = True
 
     streamlit_app()
